@@ -695,5 +695,255 @@ const Input = forwardRef(({ isValid, appearance = 'text', className, ...props },
 {/* <Input type='text' ref={titleRef} onChange={onChange} value={values.title} name='title' isValid={!isValid.title}/> */}
 
 //----------------------
-//
+//Создание своего hook
+
+//hook.js
+import { useState, useEffect } from 'react';
+
+export function useLocalStorage(key) {
+	const [data, setData] = useState();
+
+	useEffect(() => {
+		const res = JSON.parse(localStorage.getItem(key));
+		if (res) {
+			setData(res);
+		}
+	}, []);
+
+	const saveData = (newData) => {
+		localStorage.setItem(key, JSON.stringify(newData));
+		setData(newData);
+	};
+
+	return [data, saveData];
+}
+
+//App.jsx
+function mapItems(items) {
+	if (!items) {
+		return [];
+	}
+	return items.map(i => ({
+		...i,
+		date: new Date(i.date)
+	}));
+}
+
+function App() {
+	const [items, setItems] = useLocalStorage('data');
+
+	const addItem = item => {
+		setItems([...mapItems(items), {
+			post: item.post,
+			title: item.title,
+			date: new Date(item.date),
+			id: items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1
+		}]);
+	};
+  //....
+}
+
+//Правило работы hook - можем использовать в компонентах и кастомных хуках, вызывать можем только на верхнем уровне, не можем использовать их в if,hook с приставкой use__....
+
+//--------------------------
+//Context API
+//например при изменении пользователя наш нужно эту информацию через props сообщить другим компонентам , цепочка props будет разрастаться. Context API - помогает связывать без опрокидавние props что сокращает код.
+
+//старый подход
+//context.js
+import { createContext } from 'react';
+
+export const UserContext = createContext({
+	userId: 1
+});
+
+//App.jsx
+const [userId, setUserId] = useState(1);
+
+return (
+		<UserContext.Provider value={{ userId, setUserId }}>
+			<div className='app'>
+				<LeftPanel>
+					<Header/>
+					<JournalAddButton/>
+					<JournalList items={mapItems(items)} />
+				</LeftPanel>
+				<Body>
+					<JournalForm onSubmit={addItem}/>
+				</Body>
+			</div>
+		</UserContext.Provider>
+	);
+
+//JournalForm.jsx
+return (
+		<UserContext.Consumer>
+			{(context) => (
+				<form className={styles['journal-form']} onSubmit={addJournalItem}>
+					{context.userId}
+          {/* context.setUserId(userId + 1) */}
+				</form>
+			)}
+
+		</UserContext.Consumer>
+	);
+
+//c использование hook useContext()
+//JournalForm.jsx
+import { useContext } from 'react';
+import { UserContext } from '../../context/user.context';
+
+function SelectUser() {
+	const { userId, setUserId } = useContext(UserContext);
+
+	const changeUser = (e) => {
+		setUserId(Number(e.target.value));
+	};
+	
+	return (
+		<select name="user" id="user" value={userId} onChange={changeUser}>
+			<option value="1">Антон</option>
+			<option value="2">Вася</option>
+		</select>
+	);
+}
+
+//------------------------
+//Custom context
+
+//context.jsx
+import { createContext } from 'react';
+import { useState } from 'react';
+
+export const UserContext = createContext({
+	userId: 1
+});
+
+//будем оборачивать нужные элементы чтобы передать контектст
+export const UserContextProvidev = ({ children }) => {
+	const [userId, setUserId] = useState(1);
+
+	return <UserContext.Provider value={{ userId, setUserId }}>
+		{children}
+	</UserContext.Provider>;
+};
+
+//----------------------
+//работа контекста
+
+//src/components/JournalList/JournalList.jsx
+function JournalList({ items }) {
+  const { userId } = useContext(UserContext);
+
+  return	<>
+		{items
+			.filter(el => el.userId === userId)
+			.sort(sortItems)
+			.map(el => (
+				<CardButton key={el.id}>
+					<JournalItem 
+						title={el.title}
+						post={el.post}
+						date={el.date}
+					/>
+				</CardButton>
+			))}
+	</>;
+}
+
+//App.jsx
+const { userId } = useContext(UserContext);
+
+function addItem(item) {
+  setItems([...mapItems(items), {
+    ...item,
+    date: new Date(item.date),
+    id: items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1
+  }]);
+}
+
+useEffect(() => {
+	dispatchForm({ type: 'SET_VALUE', payload: { userId }});
+}, [userId]);
+
+//ограничение контекста - контектс не замена props, не следует использовать для соседних компонент (нет смысла),не оптимизирован для частых изменений
+
+
+//---------------------
+//Как работает React (Работа React)
+//react не работает с DOM на прямую, для работы с dom есть react dom который напрямую работает с dom. тоесть react рабоатет с компонентами а react dom работает с DOM. C помощью virtual Dom - некоторое представления DOM в памяти и т.к. оно находиться в памяти мы можем с ним проделывать быстрые операции.
+//Когда у компонента меняеться состояние -> компонент говорит что он изменился -> дальше обращаеться к virtual Dom и react строит разницу между текущим и новым состоянием, и в нужном месте меняем состояние, за счет того что virtual Dom быстрый и мы быстро получаем разницу -> далее это разница прокидываеться в react dom -> далее react dom отпровляет в оригинальный DOM.
+
+//-------------------
+//Memo
+//кэширует пропсы и каждый при перерысовке если ничего не изменилось он не меняет состояние и не перерисовываеться. Используем когда у нас очень длинная цепочка (3-4 компоненты в цепочке). !Важно если используеться в качестве props функция Memo работать не будет т.к. функция это объект и сравнение двух объектов дадут false т.к. разные указатели на объект.Тоесть Memo работает на примитивных типах.
+
+import { memo } from 'react';
+
+function Logo({ image }) {
+	console.log('Logo');
+
+	return <img className={styles.logo} src={image} alt="Логотип журнала" />;
+}
+
+export default memo(Logo);
+
+//-------------------
+//useCallback
+//Для запоминие некоторой функции, ее кэширование используем useCallback. 
+
+import { useCallback, useState } from 'react';
+import Button from '../Button/Button';
+import SelectUser from '../SelectUser/SelectUser';
+import Logo from '../Logo/Logo';
+
+const logos = ['/logo.svg', '/vite.svg'];
+
+function Header() {
+	const [logoIndex, setLogoIndex] = useState(0);
+	console.log('Header');
+
+  ///useCallback 
+	const toggleLogo = useCallback(() => {
+		setLogoIndex(state => Number(!state));
+	}, []);//[] - набор дополнительных зависемостей
+
+	return (
+		<>
+			<Logo image={logos[0]} />
+			<SelectUser />
+			<Button onClick={toggleLogo}>Сменить лого</Button>
+		</>
+	);
+}
+
+import { memo } from 'react';
+
+function Button({ children, onClick }) {
+	console.log('Button');
+	return (
+		<button className='button accent' onClick={onClick}>{children}</button>
+	);
+}
+
+//-------------------
+//Планировщик state
+//В react есть планировщик состояние, меняет состояние по приоритету определеная очередь, разница в доли секунды. Для распределения нагруки и времени. 
+
+//----------------
+//Batching
+//Механизм react для оптимизации обновления состояние, может некоторые состояние менять одновременно
+
+//-----------------
+//useMemo
+//позволяет кэшировать рачет переменной или значения, для тяжелых расчетах, на маленьких данных эффективность особо не заметим
+
+import { useContext, useMemo } from 'react';
+
+function JournalList({ items }) {
+  //....
+  const filteredItems = useMemo(() => items
+		.filter(el => el.userId === userId)
+		.sort(sortItems), [items, userId]); //[] - зависемости то что используем в расчетах
+}
 
