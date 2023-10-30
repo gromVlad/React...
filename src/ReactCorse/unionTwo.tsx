@@ -212,4 +212,94 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 );
 
 //--------------------
-//
+//useLocation
+//понять путь накотором мы находимся на странице
+import { useLocation } from 'react-router-dom';
+
+const location = useLocation();
+
+//если путь '/' то добавим класс active
+<Link to='/' className={cn(styles['link'], {
+  [styles.active]: location.pathname === '/'
+})}/>
+
+//------------------
+//NavLink
+//для навигации есть отдельный компонент
+
+//если путь '/' и isActive true то добавим класс active
+return (<NavLink to='/' className={({ isActive }) => cn(styles['link'], {
+  [styles.active]: isActive
+})}/>)
+
+//-------------------
+//Упражнение - Заголовок и поиск
+
+//Headling.props.ts
+import { HTMLAttributes, ReactNode } from 'react';
+
+export interface HeadlingProps extends HTMLAttributes<HTMLHeadingElement> {
+  children: ReactNode;
+}
+
+//Headling.tsx
+import styles from './Headling.module.css';
+import cn from 'classnames';
+import { HeadlingProps } from './Headling.props';
+
+function Headling({ children, className, ...props }: HeadlingProps) {
+  return (
+    <h1 className={cn(className, styles['h1'])} {...props}>{children}</h1>
+  );
+}
+
+export default Headling;
+
+//----------------
+//Упражнение - Карточка товара
+
+//ProductCard.props.ts
+export interface ProductCardProps {
+  id: number;
+  title: string;
+  description: string;
+  image: string;
+  price: number;
+  rating: number;
+}
+
+//ProductCard.tsx
+import { Link } from 'react-router-dom';
+import styles from './ProductCard.module.css';
+import { ProductCardProps } from './ProductCard.props';
+
+function ProductCard(props: ProductCardProps) {
+  return (
+    <Link to={'/'} className={styles['link']}>
+      <div className={styles['card']}>
+        <div className={styles['head']} style={{ backgroundImage: `url('${props.image}')` }}>
+          <div className={styles['price']}>
+            {props.price}&nbsp;
+            <span className={styles['currency']}>₽</span>
+          </div>
+          <button className={styles['add-to-cart']}>
+            <img src="/cart-button-icon.svg" alt="Добавить в корзину" />
+          </button>
+          <div className={styles['rating']}>
+            {props.rating}&nbsp;
+            <img src="/star-icon.svg" alt="Иконка звезды" />
+          </div>
+        </div>
+        <div className={styles['footer']}>
+          <div className={styles['title']}>{props.title}</div>
+          <div className={styles['description']}>{props.description}</div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+export default ProductCard;
+
+//--------------------
+
