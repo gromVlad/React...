@@ -174,7 +174,7 @@ export function Layout() {
       <Link to='/cart'>Корзина</Link>
     </div>
 
-    {/* нужен что вложенная структура приложения работала */}
+    {/* нужен чтобы вложенная структура приложения работала children нашего Layout,просто добовляем*/}
     <div>
       <Outlet />
     </div>
@@ -302,4 +302,457 @@ function ProductCard(props: ProductCardProps) {
 export default ProductCard;
 
 //--------------------
+//Роуты с параметрами
 
+//ProductCard.tsx
+function ProductCard(props: ProductCardProps) {
+  return (
+    <Link to={`/product/${props.id}`} className={styles['link']}/>
+    )
+}
+
+//main.tsx
+//cпециальный route с параметром
+{
+  path: '/product/:id',
+  element: <Product />
+}
+
+//
+import { useParams } from 'react-router-dom';
+
+export function Product() {
+  //ловит переданный параметр id (может любое другое название заданное в route)
+  const { id } = useParams();
+
+  //показывает id
+  return <>
+    Product - {id}
+  </>;
+}
+
+//----------------
+//Создание запросов
+
+//API.ts
+export const PREFIX = 'https://purpleschool.ru/pizza-api-demo';
+
+//product.interface.ts
+export interface Product {
+  id: number
+  name: string
+  price: number
+  ingredients: string[]
+  image: string
+  rating: number
+}
+
+//Menu.tsx
+import { useEffect, useState } from 'react';
+
+export function Menu() {
+  const [products, setProducts] = useState<Product[]>([]);
+
+  const getMenu = async () => {
+    try {
+      const res = await fetch(`${PREFIX}/products`);
+      if (!res.ok) {
+        return;
+      }
+      const data = await res.json() as Product[];
+      setProducts(data);
+    } catch (e) {
+      console.error(e);
+      return;
+    }
+  };
+
+  useEffect(() => {
+    getMenu();
+  }, []);
+
+  //....
+}
+
+//------------------
+//Подключение axios
+
+import axios from 'axios';
+
+const getMenu = async () => {
+  try {
+    const { data } = await axios.get<Product[]>(`${PREFIX}/products`);
+    //setProducts(data);
+  } catch (e) {
+    console.error(e);}
+  }
+
+//----------------
+//Обработка загрузки
+
+const [products, setProducts] = useState<Product[]>([]);
+const [isLoading, setIsLoading] = useState<boolean>(false);
+
+const getMenu = async () => {
+  try {
+    setIsLoading(true);
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        resolve();
+      }, 2000);
+    });
+    const { data } = await axios.get<Product[]>(`${PREFIX}/products`);
+    setProducts(data);
+    setIsLoading(false);
+  } catch (e) {
+    console.error(e);
+    setIsLoading(false);
+    return;
+  }
+};
+//{isLoading && <>Загружаем продукты...</>}
+
+//---------------------
+//Обработка ошибок
+
+const [error, setError] = useState<string | undefined>();
+
+const getMenu = async () => {
+  try {
+    setIsLoading(true);
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        resolve();
+      }, 2000);
+    });
+    const { data } = await axios.get<Product[]>(`${PREFIX}/products`);
+    setProducts(data);
+    setIsLoading(false);
+  } catch (e) {
+    console.error(e);
+    //т.к тип unknown надо проверить что нам приходит по факту
+    if (e instanceof AxiosError) {
+      setError(e.message);
+    }
+    setIsLoading(false);
+    return;
+  }
+};
+//{error && <>{error}</>}
+
+//----------------
+//loader
+//если зависим от params (данных которые приходят)
+//обеспечивает загрузку данных перед render() самого компонента,функция loader() говорит как мы можем загрузить данные перед тем как  отобразить продукт
+
+{
+  path: '/product/:id',
+  element: <Product />,
+  loader: async ({ params }) => {
+      const { data } = await axios.get(`${PREFIX}/products/${params.id}`);
+      return data;
+  }
+}
+
+//Product.tsx
+import { useLoaderData } from 'react-router-dom';
+import { Product } from '../../interfaces/product.interface';
+
+export function Product() {
+  const data = useLoaderData() as Product;
+
+  return <>
+    Product - {data.name}
+  </>;
+}
+
+//------------------
+//errorElement
+//если ошибка в loader либо в самой функции loader
+
+{
+  path: '/product/:id',
+  element: <Product />,
+  errorElement: <>Ошибка</>
+  loader: async ({ params }) => {
+      const { data } = await axios.get(`${PREFIX}/products/${params.id}`);
+      return data;
+  }
+}
+
+//------------------
+//Lazy 
+//Ленивая загрузка части компонент которые будем грузить только при переходе к ней
+
+import React, { lazy } from 'react';
+
+//import { Menu } from './pages/Menu/Menu.tsx'; - будет грузить нашу компоненту только при переходе на нее
+const Menu = lazy(() => import('./pages/Menu/Menu')); // такой import требует default export Menu
+
+//------------------
+//Suspense
+//Делает временный обработчик пока наш компонент загружаеться
+
+import React, { Suspense, lazy } from 'react';
+
+{
+  path: '/',
+  element: <Suspense fallback={<>Загрузка...</>}><Menu /></Suspense>
+}
+
+//------------------
+//defer и Await
+//немного другой синтаксиси обрабокт ошибок и вывода данных
+
+{
+  path: '/product/:id',
+    element: <Product />,
+      errorElement: <>Ошибка</>,
+        loader: async ({ params }) => {
+          return defer({
+            data: new Promise((resolve, reject) => {
+              setTimeout(() => {
+                axios.get(`${PREFIX}/products/${params.id}`).then(data => resolve(data)).catch(e => reject(e));
+              }, 2000);
+            })
+          });
+        }
+}
+
+//Product.tsx
+import { Await, useLoaderData } from 'react-router-dom';
+import { Product } from '../../interfaces/product.interface';
+import { Suspense } from 'react';
+
+export function Product() {
+  const data = useLoaderData() as { data: Product };
+
+  return <>
+    <Suspense fallback={'Загружаю...'}>
+      <Await
+        resolve={data.data}
+      >
+        {({ data }: { data: Product }) => (
+          <>Product - {data.name}</>
+        )}
+      </Await>
+    </Suspense>
+  </>;
+}
+
+//-----------------
+//Создание входа
+
+//main.tsx
+  const router = createBrowserRouter([
+    {
+      path: '/',
+      element: <Layout />,
+      children: [
+        {
+          path: '/',
+          element: <Suspense fallback={<>Загрузка...</>}><Menu /></Suspense>
+        },
+        {
+          path: '/cart',
+          element: <Cart />
+        },
+        {
+          path: '/product/:id',
+          element: <Product />,
+          errorElement: <>Ошибка</>,
+          loader: async ({ params }) => {
+            return defer({
+              data: new Promise((resolve, reject) => {
+                setTimeout(() => {
+                  axios.get(`${PREFIX}/products/${params.id}`).then(data => resolve(data)).catch(e => reject(e));
+                }, 2000);
+              })
+            });
+          }
+        }
+      ]
+    },
+    //логин страница
+    {
+      path: '/auth',
+      element: <AuthLayout />,
+      children: [
+        {
+          path: 'login',
+          element: <Login />
+        }, {
+          path: 'register',
+          element: <Register />
+        }
+      ]
+    },
+    {
+      path: '*',
+      element: <ErropPage />
+    }
+  ]);
+
+//AuthLayout.tsx
+import { Outlet } from 'react-router-dom';
+import styles from './AuthLayout.module.css';
+
+export function AuthLayout() {
+  return <div className={styles['layout']}>
+    <div className={styles['logo']}>
+      <img src="/logo.svg" alt="Логотип компании" />
+    </div>
+    <div className={styles['content']}>
+      <Outlet />
+    </div>
+  </div>;
+}
+
+//------------------
+//Получение токена
+
+export type LoginForm = {
+  email: {
+    value: string;
+  };
+  password: {
+    value: string;
+  };
+}
+
+export function Login() {
+  const [error, setError] = useState<string | null>();
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const target = e.target as typeof e.target & LoginForm;
+    const { email, password } = target;
+    await sendLogin(email.value, password.value);
+  };
+
+  const sendLogin = async (email: string, password: string) => {
+    try {
+      const { data } = await axios.post(`${PREFIX}/auth/login`, {
+        email,
+        password
+      });
+      console.log(data);
+    } catch (e) {
+      if (e instanceof AxiosError) {
+        setError(e.response?.data.message);
+      }
+    }
+
+  };
+
+  return <div className={styles['login']}>
+    <Headling>Вход</Headling>
+    {error && <div className={styles['error']}>{error}</div>}
+    <form className={styles['form']} onSubmit={submit}>
+      <div className={styles['field']}>
+        <label htmlFor="email">Ваш email</label>
+        <Input id="email" name='email' placeholder='Email' />
+      </div>
+      <div className={styles['field']}>
+        <label htmlFor="password">Ваш пароль</label>
+        <Input id="password" name='password' type="password" placeholder='Пароль' />
+      </div>
+      <Button appearence="big">Вход</Button>
+    </form>
+    <div className={styles['links']}>
+      <div>Нет акканута?</div>
+      <Link to="/auth/register">Зарегистрироваться</Link>
+    </div>
+  </div>;
+}
+
+//--------------------
+//JVT 
+//имеет неограниченный жизненный цикл, формируеться из наборов данных с алгоритмами шифрование которые содержит зашифрованную информацию. Ключ хранитьться на бэке. Клиент не может шасрифровать эту информцию но когда связываеться с сервером то кидает этот токен который сервер проверяет и при успешной индификации дает доступ к работе. Чтобы токен не попал в руки злоумышлиников  то придумали refresh (ограниченный жизненный цикл, 1-2 дня), этот токен нужен чтобы обновить основной токен. 
+
+//------------------
+//Приватные Routes
+//проверка на валидность токена
+
+//RequireAuth.tsx
+import { ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
+
+export const RequireAuth = ({ children }: { children: ReactNode }) => {
+  const jwt = null;
+
+  if (!jwt) {
+    //переход на login
+    return <Navigate to="/auth/login" replace />;
+  }
+  return children;
+};
+
+//main.tsx
+{
+  path: '/',
+  element: <Layout />,
+  //оборачиваем наш главный компонент чтобы проверка распространилось на все приложения
+  element: <RequireAuth><Layout /></RequireAuth>
+}
+
+//------------------------
+//Хранение в localstorage
+
+//interface.ts
+export interface LoginResponse {
+  access_token: string;
+}
+
+//Login.tsx
+const sendLogin = async (email: string, password: string) => {
+  try {
+      const { data } = await axios.post<LoginResponse>(`${PREFIX}/auth/login`, {
+        email,
+        password
+      })
+      console.log(data)
+      localStorage.setItem('jwt', data.access_token)
+      navigate('/')
+  } catch (e) {
+    if (e instanceof AxiosError) {
+      setError(e.response?.data.message);
+    }
+  }
+}
+
+
+//RequireAuth.tsx
+import { ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
+
+export const RequireAuth = ({ children }: { children: ReactNode }) => {
+  const jwt = null;
+
+  const jwt = localStorage.getItem('jwt');
+  if (!jwt) {
+    //переход на login
+    return <Navigate to="/auth/login" replace />;
+  }
+  return children;
+};
+
+//Layout.tsx
+const navigate = useNavigate();
+
+const logout = () => {
+  localStorage.removeItem('jwt');
+  navigate('/auth/login');
+
+  return (
+    //...
+    <Button className={styles['exit']} onClick={logout}>
+      <img src="/exit-icon.svg" alt="Иконка выхода" />
+      Выход
+    </Button>
+  )
+};
+
+//---------------------
+//
