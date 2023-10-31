@@ -407,4 +407,238 @@ const add = (e: MouseEvent) => {
 //---------------------------
 //Поиск товаров
 
+//Menu.tsx
 
+const [filter, setFilter] = useState<string>();
+
+useEffect(() => {
+  getMenu(filter);
+}, [filter]);
+
+const getMenu = async (name?: string) => {
+  try {
+    setIsLoading(true)
+    const { data } = await axios.get<Product[]>(`${PREFIX}/products`, {
+      params: {
+        name
+      }
+    });
+    setProducts(data);
+    setIsLoading(false);
+  } catch (e) {
+    //....
+  }
+}
+
+const updateFilter = (e: ChangeEvent<HTMLInputElement>) => {
+  setFilter(e.target.value);
+};
+
+return <>
+  <Search placeholder='Введите блюдо или состав' onChange={updateFilter} />
+  {!isLoading && products.length === 0 && <>Не найдено блюд по запросу</>}
+</>
+
+//--------------------
+//Корзина
+
+//cart.slice.ts
+import { PayloadAction, createSlice } from '@reduxjs/toolkit';
+import { loadState } from './storage';
+
+export const CART_PERSISTENT_STATE = 'cartData';
+
+export interface CartItem {
+  id: number;
+  count: number;
+}
+
+export interface CartState {
+  items: CartItem[];
+}
+
+const initialState: CartState = loadState<CartState>(CART_PERSISTENT_STATE) ?? {
+  items: []
+};
+
+export const cartSlice = createSlice({
+  name: 'cart',
+  initialState,
+  reducers: {
+    clean: (state) => {
+      state.items = [];
+    },
+    delete: (state, action: PayloadAction<number>) => {
+      state.items = state.items.filter(i => i.id !== action.payload);
+    },
+    remove: (state, action: PayloadAction<number>) => {
+      const existed = state.items.find(i => i.id === action.payload);
+      if (!existed) {
+        return;
+      }
+      if (existed.count === 1) {
+        state.items = state.items.filter(i => i.id !== action.payload);
+      } else {
+        state.items.map(i => {
+          if (i.id === action.payload) {
+            i.count -= 1;
+          }
+          return i;
+        });
+        return;
+      }
+
+    },
+    add: (state, action: PayloadAction<number>) => {
+      const existed = state.items.find(i => i.id === action.payload);
+      if (!existed) {
+        state.items.push({ id: action.payload, count: 1 });
+        return;
+      }
+      state.items.map(i => {
+        if (i.id === action.payload) {
+          i.count += 1;
+        }
+        return i;
+      });
+    }
+  }
+});
+
+export default cartSlice.reducer;
+export const cartActions = cartSlice.actions;
+
+//CartItem.tsx
+import styles from './CartItem.module.css';
+import { useDispatch } from 'react-redux';
+import { AppDispath } from '../../store/store';
+import { cartActions } from '../../store/cart.slice';
+import { CartItemProps } from './CartItem.props';
+
+function CartItem(props: CartItemProps) {
+  const dispatch = useDispatch<AppDispath>();
+
+  const increase = () => {
+    dispatch(cartActions.add(props.id));
+  };
+
+  const descrease = () => {
+    dispatch(cartActions.remove(props.id));
+  };
+
+  const remove = () => {
+    dispatch(cartActions.delete(props.id));
+  };
+
+
+  return (
+    <div className={styles['item']}>
+      <div className={styles['image']} style={{ backgroundImage: `url('${props.image}')` }}></div>
+      <div className={styles['description']}>
+        <div className={styles['name']}>{props.name}</div>
+        <div className={styles['price']}>{props.price}&nbsp;₽</div>
+      </div>
+      <div className={styles['actions']}>
+        <button className={styles['minus']} onClick={descrease}>
+          <img src="/minus-icon.svg" alt="Удалить из корзины" />
+        </button>
+        <div className={styles['number']}>{props.count}</div>
+        <button className={styles['plus']} onClick={increase}>
+          <img src="/plus-icon.svg" alt="Добавить в корзину" />
+        </button>
+        <button className={styles['remove']} onClick={remove}>
+          <img src="/delete-icon.svg" alt="Удалить все" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default CartItem;
+
+//Cart.tsx
+import { useDispatch, useSelector } from 'react-redux';
+import Headling from '../../components/Headling/Headling';
+import { AppDispath, RootState } from '../../store/store';
+import CartItem from '../../components/CartItem/CartItem';
+import { useEffect, useState } from 'react';
+import { Product } from '../../interfaces/product.interface';
+import axios from 'axios';
+import { PREFIX } from '../../helpers/API';
+import styles from './Cart.module.css';
+import Button from '../../components/Button/Button';
+import { useNavigate } from 'react-router-dom';
+import { cartActions } from '../../store/cart.slice';
+
+const DELIVERY_FEE = 169;
+
+export function Cart() {
+  const [cartProducts, setCardProducts] = useState<Product[]>([]);
+  const items = useSelector((s: RootState) => s.cart.items);
+  const jwt = useSelector((s: RootState) => s.user.jwt);
+  const dispatch = useDispatch<AppDispath>();
+  const navigate = useNavigate();
+
+  const total = items.map(i => {
+    const product = cartProducts.find(p => p.id === i.id);
+    if (!product) {
+      return 0;
+    }
+    return i.count * product.price;
+  }).reduce((acc, i) => acc += i, 0);
+
+
+  const getItem = async (id: number) => {
+    const { data } = await axios.get<Product>(`${PREFIX}/products/${id}`);
+    return data;
+  };
+
+  const loadAllItems = async () => {
+    const res = await Promise.all(items.map(i => getItem(i.id)));
+    setCardProducts(res);
+  };
+
+  const checkout = async () => {
+    await axios.post(`${PREFIX}/order`, {
+      products: items
+    }, {
+      headers: {
+        Authorization: `Bearer ${jwt}`
+      }
+    });
+    dispatch(cartActions.clean());
+    navigate('/success');
+  };
+
+  useEffect(() => {
+    loadAllItems();
+  }, [items]);
+
+  return <>
+    <Headling className={styles['headling']}>Корзина</Headling>
+    {items.map(i => {
+      const product = cartProducts.find(p => p.id === i.id);
+      if (!product) {
+        return;
+      }
+      return <CartItem key={product.id} count={i.count} {...product} />;
+    })}
+    <div className={styles['line']}>
+      <div className={styles['text']}>Итог</div>
+      <div className={styles['price']}>{total}&nbsp;<span>₽</span></div>
+    </div>
+    <hr className={styles['hr']} />
+    <div className={styles['line']}>
+      <div className={styles['text']}>Доставка</div>
+      <div className={styles['price']}>{DELIVERY_FEE}&nbsp;<span>₽</span></div>
+    </div>
+    <hr className={styles['hr']} />
+    <div className={styles['line']}>
+      <div className={styles['text']}>Итог <span className={styles['total-count']}>({items.length})</span></div>
+      <div className={styles['price']}>{total + DELIVERY_FEE}&nbsp;<span>₽</span></div>
+    </div>
+    <div className={styles['checkout']}>
+      <Button appearence="big" onClick={checkout}>оформить</Button>
+    </div>
+  </>;
+}
